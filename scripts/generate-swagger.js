@@ -1,0 +1,1707 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Get the current file's directory and the project root
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootPath = path.resolve(__dirname, "..");
+
+// The path to save the swagger.yaml file
+const swaggerPath = path.join(rootPath, "swagger.yaml");
+
+// Swagger YAML content (this contains the entire swagger definition from earlier)
+const swaggerContent = `openapi: 3.0.0
+info:
+  title: LineCraft Employee Management API
+  description: API for employee/roster management, job opportunities, and communication
+  version: 1.0.0
+  contact:
+    name: LineCraft Support
+    email: support@linecraft.com
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development Server
+  - url: https://api.linecraft.com/api
+    description: Production Server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: User ID
+        name:
+          type: string
+          description: User's full name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            state:
+              type: string
+            zipCode:
+              type: string
+        role:
+          type: string
+          enum: [user, admin]
+          default: user
+        isApproved:
+          type: boolean
+          default: false
+        notificationSettings:
+          type: object
+          properties:
+            globalMessages:
+              type: boolean
+              default: true
+            eventMessages:
+              type: boolean
+              default: true
+            privateMessages:
+              type: boolean
+              default: true
+            opportunityUpdates:
+              type: boolean
+              default: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - name
+        - email
+        - address
+
+    UserRegistration:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            state:
+              type: string
+            zipCode:
+              type: string
+      required:
+        - name
+        - email
+        - password
+        - address
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/User'
+        token:
+          type: string
+          description: JWT token for authentication
+
+    Message:
+      type: object
+      properties:
+        _id:
+          type: string
+        sender:
+          $ref: '#/components/schemas/User'
+        recipient:
+          $ref: '#/components/schemas/User'
+        content:
+          type: string
+        chatType:
+          type: string
+          enum: [global, private, event]
+        eventId:
+          type: string
+        linkedOpportunity:
+          type: string
+        mentions:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        readBy:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Opportunity:
+      type: object
+      properties:
+        _id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        availableSlots:
+          type: integer
+          minimum: 1
+        filledSlots:
+          type: integer
+          default: 0
+        departureDateTime:
+          type: string
+          format: date-time
+        payRate:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [open, filled, closed, cancelled]
+          default: open
+        interestedUsers:
+          type: array
+          items:
+            type: object
+            properties:
+              user:
+                $ref: '#/components/schemas/User'
+              status:
+                type: string
+                enum: [interested, not_interested, selected, rejected]
+              appliedAt:
+                type: string
+                format: date-time
+        createdBy:
+          $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          /opportunities/interested:
+    get:
+      tags:
+        - Opportunities
+      summary: Get user's interested opportunities
+      description: Get a list of opportunities the current user has expressed interest in
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        "200":
+          description: List of user's interested opportunities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunities:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Opportunity"
+                        - type: object
+                          properties:
+                            userInterestStatus:
+                              type: string
+                              enum: [interested, not_interested, selected, rejected]
+                              description: The user's interest status for this opportunity
+                            userAppliedAt:
+                              type: string
+                              format: date-time
+                              description: When the user expressed interest
+                  pagination:
+                    $ref: "#/components/schemas/PaginatedResponse"
+        "401":
+          description: Not authenticated
+
+    Event:
+      type: object
+      properties:
+        _id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        departureDateTime:
+          type: string
+          format: date-time
+        returnDateTime:
+          type: string
+          format: date-time
+        payRate:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+          default: active
+        participants:
+          type: array
+          items:
+            type: object
+            properties:
+              user:
+                $ref: '#/components/schemas/User'
+              status:
+                type: string
+                enum: [confirmed, declined, no_response]
+        originatedFrom:
+          $ref: '#/components/schemas/Opportunity'
+        chatRoom:
+          type: string
+        createdBy:
+          $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: string
+          format: date-time
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    PaginatedResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalPages:
+          type: integer
+        totalItems:
+          type: integer
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates a new user account that will require admin approval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input data
+        '409':
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login to the application
+      description: Authenticate a user and return a JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Account not approved
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Get user profile
+      description: Returns the current user's profile information
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+    put:
+      tags:
+        - Authentication
+      summary: Update user profile
+      description: Update the current user's profile information
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                address:
+                  type: object
+                  properties:
+                    street:
+                      type: string
+                    state:
+                      type: string
+                    zipCode:
+                      type: string
+                notificationSettings:
+                  type: object
+                  properties:
+                    globalMessages:
+                      type: boolean
+                    eventMessages:
+                      type: boolean
+                    privateMessages:
+                      type: boolean
+                    opportunityUpdates:
+                      type: boolean
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+                  token:
+                    type: string
+        '401':
+          description: Not authenticated
+
+  /users:
+    get:
+      tags:
+        - User Management
+      summary: Get all users
+      description: Return a list of all users (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+
+  /users/pending:
+    get:
+      tags:
+        - User Management
+      summary: Get pending approval users
+      description: Return a list of users pending approval (admin only)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of pending users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+
+  /users/{id}/approval:
+    put:
+      tags:
+        - User Management
+      summary: Approve or reject user
+      description: Approve or reject a user registration (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approve:
+                  type: boolean
+                  description: Set to true to approve, false to reject
+              required:
+                - approve
+      responses:
+        '200':
+          description: User approval status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: User not found
+
+  /users/{id}/role:
+    put:
+      tags:
+        - User Management
+      summary: Update user role
+      description: Update a user's role (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [user, admin]
+              required:
+                - role
+      responses:
+        '200':
+          description: User role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid role
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: User not found
+
+  /users/{id}:
+    get:
+      tags:
+        - User Management
+      summary: Get user by ID
+      description: Get a specific user by ID (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: User not found
+    delete:
+      tags:
+        - User Management
+      summary: Delete user
+      description: Delete a user (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: User ID
+      responses:
+        '200':
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: User not found
+
+  /messages/global:
+    post:
+      tags:
+        - Messages
+      summary: Send global message
+      description: Send a message to the global chat
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Message content
+              required:
+                - content
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid request
+        '401':
+          description: Not authenticated
+    get:
+      tags:
+        - Messages
+      summary: Get global messages
+      description: Get messages from the global chat
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+          description: Number of messages per page
+      responses:
+        '200':
+          description: List of global messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+
+  /messages/private/{recipientId}:
+    post:
+      tags:
+        - Messages
+      summary: Send private message
+      description: Send a private message to another user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: recipientId
+          required: true
+          schema:
+            type: string
+          description: Recipient User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Message content
+              required:
+                - content
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    $ref: '#/components/schemas/Message'
+                  chat:
+                    type: object
+        '400':
+          description: Invalid request
+        '401':
+          description: Not authenticated
+        '404':
+          description: Recipient not found
+    get:
+      tags:
+        - Messages
+      summary: Get private messages
+      description: Get private messages with a specific user
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: recipientId
+          required: true
+          schema:
+            type: string
+          description: Other User ID
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+          description: Number of messages per page
+      responses:
+        '200':
+          description: List of private messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  otherUser:
+                    $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+
+  /messages/chats:
+    get:
+      tags:
+        - Messages
+      summary: Get private chats
+      description: Get a list of private chats
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of private chats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  chats:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        otherUser:
+                          $ref: '#/components/schemas/User'
+                        lastMessage:
+                          $ref: '#/components/schemas/Message'
+                        updatedAt:
+                          type: string
+                          format: date-time
+        '401':
+          description: Not authenticated
+
+  /messages/event/{eventId}:
+    post:
+      tags:
+        - Messages
+      summary: Send event message
+      description: Send a message to an event chat
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: Message content
+              required:
+                - content
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid request
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized for this event
+        '404':
+          description: Event not found
+    get:
+      tags:
+        - Messages
+      summary: Get event messages
+      description: Get messages from an event chat
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+          description: Event ID
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+          description: Number of messages per page
+      responses:
+        '200':
+          description: List of event messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  event:
+                    $ref: '#/components/schemas/Event'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized for this event
+        '404':
+          description: Event not found
+
+  /messages/unread:
+    get:
+      tags:
+        - Messages
+      summary: Get unread message counts
+      description: Get counts of unread messages by category
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Unread message counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  unreadCounts:
+                    type: object
+                    properties:
+                      global:
+                        type: integer
+                      private:
+                        type: integer
+                      events:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                      total:
+                        type: integer
+        '401':
+          description: Not authenticated
+
+  /opportunities:
+    post:
+      tags:
+        - Opportunities
+      summary: Create new opportunity
+      description: Create a new job opportunity (admin only)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                availableSlots:
+                  type: integer
+                  minimum: 1
+                departureDateTime:
+                  type: string
+                  format: date-time
+                payRate:
+                  type: number
+                  format: float
+                expiresAt:
+                  type: string
+                  format: date-time
+              required:
+                - title
+                - description
+                - availableSlots
+                - departureDateTime
+                - payRate
+      responses:
+        '201':
+          description: Opportunity created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+                  announcement:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid request
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+    get:
+      tags:
+        - Opportunities
+      summary: Get all opportunities
+      description: Get a list of all job opportunities
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [open, filled, closed, cancelled]
+          description: Filter by status
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of opportunities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Opportunity'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+
+  /opportunities/{id}:
+    get:
+      tags:
+        - Opportunities
+      summary: Get opportunity by ID
+      description: Get a specific job opportunity by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+      responses:
+        '200':
+          description: Opportunity found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+        '401':
+          description: Not authenticated
+        '404':
+          description: Opportunity not found
+    put:
+      tags:
+        - Opportunities
+      summary: Update opportunity
+      description: Update a job opportunity (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                availableSlots:
+                  type: integer
+                  minimum: 1
+                departureDateTime:
+                  type: string
+                  format: date-time
+                payRate:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum: [open, filled, closed, cancelled]
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Opportunity updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Opportunity not found
+    delete:
+      tags:
+        - Opportunities
+      summary: Delete opportunity
+      description: Delete a job opportunity (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+      responses:
+        '200':
+          description: Opportunity deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Opportunity not found
+
+  /opportunities/{id}/interest:
+    post:
+      tags:
+        - Opportunities
+      summary: Express interest in opportunity
+      description: Express interest or disinterest in a job opportunity
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interested:
+                  type: boolean
+                  description: True for interested, false for not interested
+              required:
+                - interested
+      responses:
+        '200':
+          description: Interest expressed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+        '400':
+          description: Invalid request or opportunity not open
+        '401':
+          description: Not authenticated
+        '404':
+          description: Opportunity not found
+
+  /opportunities/{id}/select/{userId}:
+    put:
+      tags:
+        - Opportunities
+      summary: Select user for opportunity
+      description: Select or reject a user for a job opportunity (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                select:
+                  type: boolean
+                  description: True to select, false to reject
+              required:
+                - select
+      responses:
+        '200':
+          description: User selection updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+        '400':
+          description: Invalid request or opportunity not open
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Opportunity or user not found
+
+  /opportunities/{id}/close:
+    post:
+      tags:
+        - Opportunities
+      summary: Close opportunity and create event
+      description: Close an opportunity and create an event for selected users (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Opportunity ID
+      responses:
+        '200':
+          description: Opportunity closed and event created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  opportunity:
+                    $ref: '#/components/schemas/Opportunity'
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid request or no users selected
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Opportunity not found
+
+  /events:
+    get:
+      tags:
+        - Events
+      summary: Get all events
+      description: Get a list of all events (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, completed, cancelled]
+          description: Filter by status
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  pagination:
+                    $ref: '#/components/schemas/PaginatedResponse'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+
+  /events/my-events:
+    get:
+      tags:
+        - Events
+      summary: Get user's events
+      description: Get a list of events the current user is participating in
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of user's events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          description: Not authenticated
+
+  /events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get event by ID
+      description: Get a specific event by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Event found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized for this event
+        '404':
+          description: Event not found
+    put:
+      tags:
+        - Events
+      summary: Update event
+      description: Update an event (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                departureDateTime:
+                  type: string
+                  format: date-time
+                returnDateTime:
+                  type: string
+                  format: date-time
+                payRate:
+                  type: number
+                  format: float
+                status:
+                  type: string
+                  enum: [active, completed, cancelled]
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Event not found
+
+  /events/{id}/complete:
+    put:
+      tags:
+        - Events
+      summary: Complete event
+      description: Mark an event as completed (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Event marked as completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: Event is not active
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Event not found
+
+  /events/{id}/cancel:
+    put:
+      tags:
+        - Events
+      summary: Cancel event
+      description: Cancel an event (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for cancellation
+      responses:
+        '200':
+          description: Event cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: Event is not active
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Event not found
+
+  /events/{id}/participants/{userId}:
+    put:
+      tags:
+        - Events
+      summary: Update participant status
+      description: Update a participant's status in an event (admin only)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [confirmed, declined, no_response]
+                  description: New participant status
+              required:
+                - status
+      responses:
+        '200':
+          description: Participant status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid status
+        '401':
+          description: Not authenticated
+        '403':
+          description: Not authorized as admin
+        '404':
+          description: Event or participant not found`;
